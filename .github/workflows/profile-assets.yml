@@ -1,0 +1,63 @@
+name: Refresh profile assets
+
+on:
+  schedule:
+    # once a day at 00:30 UTC
+    - cron: "30 0 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    # Only react to changes that can alter the output. The commit this workflow
+    # makes touches assets/ only, which is NOT listed here, and it is pushed with
+    # GITHUB_TOKEN (which never triggers new runs), so it cannot loop.
+    paths:
+      - "config/**"
+      - ".github/scripts/**"
+      - ".github/workflows/profile-assets.yml"
+
+permissions:
+  contents: write # needed to commit the regenerated SVGs back to the repo
+
+concurrency:
+  group: profile-assets
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build static art (hero, tech stack, buttons)
+        run: python .github/scripts/make_static.py
+
+      - name: Build live panels (stats, contribution runner, project cards)
+        run: python .github/scripts/make_stats.py
+        env:
+          # Optional: add a classic token with `read:user` as the STATS_TOKEN
+          # secret to include private contributions. Without it the built-in
+          # GITHUB_TOKEN is used and only public activity is counted.
+          GITHUB_TOKEN: ${{ secrets.STATS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Commit regenerated assets
+        env:
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git add assets
+          if git diff --cached --quiet; then
+            echo "Assets unchanged, nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: refresh profile assets [skip ci]"
+          # If main moved while this job ran, rebase onto it and try once more.
+          git pull --rebase origin "$BRANCH"
+          git push origin "HEAD:$BRANCH"

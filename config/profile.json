@@ -1,0 +1,44 @@
+{
+  "_comment": "Single source of truth for the generators. Only put real values here. null means 'not supplied': the generators omit it instead of inventing it.",
+  "name": "Adnan Khan",
+  "handle": "adnan-15",
+  "degree": "B.Tech CSE (AI & Data Science)",
+  "links": {
+    "github": "https://github.com/adnan-15",
+    "linkedin": null,
+    "email": null,
+    "portfolio": null
+  },
+  "projects": [
+    {
+      "slug": "skymart",
+      "title": "SkyMart",
+      "blurb": "react e-commerce application",
+      "category": "web app",
+      "url": "https://skymart-d6ss.onrender.com/",
+      "label": "skymart-d6ss.onrender.com",
+      "repo": null,
+      "tags": ["react"]
+    },
+    {
+      "slug": "fintrack-pro",
+      "title": "FinTrack Pro",
+      "blurb": "personal finance dashboard",
+      "category": "dashboard",
+      "url": null,
+      "label": "github.com/adnan-15",
+      "repo": null,
+      "tags": ["html", "css", "javascript", "chart.js"]
+    },
+    {
+      "slug": "fluent-ai",
+      "title": "Fluent AI",
+      "blurb": "django-based ai learning assistant with chatbot and voice assistant",
+      "category": "ai / learning",
+      "url": null,
+      "label": "github.com/adnan-15",
+      "repo": null,
+      "tags": ["django", "python"]
+    }
+  ]
+}
