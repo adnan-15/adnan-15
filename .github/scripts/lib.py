@@ -4,6 +4,9 @@ Standard library only, so the workflow needs no `pip install`.
 """
 import json
 import os
+import re
+import sys
+import urllib.error
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,6 +19,7 @@ DIM, MUTED, TEXT = "#31514c", "#5b7d73", "#e6fff5"
 YEL, VIOLET = "#F5C542", "#a78bfa"
 RED_D, YEL_D, GRN_D = "#ff5f56", "#ffbd2e", "#27c93f"
 FONT = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace"
+SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Helvetica,Arial,sans-serif"
 
 
 def load_config():
@@ -142,27 +146,80 @@ class Px:
         return "".join(out)
 
 
-# GitHub API ------------------------------------------------------------------
-def _headers():
-    h = {"Accept": "application/vnd.github+json", "User-Agent": "adnan-15-profile"}
+# diagnostics ------------------------------------------------------------------
+DIAG = []  # (level, message) collected for the run summary
+
+
+def note(level, msg):
+    """Record a diagnostic and emit a GitHub Actions annotation (plain text elsewhere)."""
+    DIAG.append((level, msg))
+    tag = {"error": "error", "warning": "warning"}.get(level)
+    print(f"::{tag}::{msg}" if tag and os.environ.get("GITHUB_ACTIONS") else f"[{level}] {msg}")
+
+
+def write_summary():
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path or not DIAG:
+        return
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("### Profile asset run\n\n")
+        for lvl, msg in DIAG:
+            f.write(f"- **{lvl}**: {msg}\n")
+
+
+def norm(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+# HTTP ----------------------------------------------------------------------------
+class FetchError(Exception):
+    pass
+
+
+def _headers(accept="application/vnd.github+json", auth=True):
+    h = {"Accept": accept, "User-Agent": "adnan-15-profile-assets"}
     tok = os.environ.get("GITHUB_TOKEN", "")
-    if tok:
+    if tok and auth:
         h["Authorization"] = f"Bearer {tok}"
     return h
 
 
+def _open(req, what):
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        left = e.headers.get("X-RateLimit-Remaining")
+        body = ""
+        try:
+            body = json.loads(e.read().decode("utf-8", "replace")).get("message", "")
+        except Exception:  # noqa: BLE001
+            pass
+        hint = ""
+        if e.code == 401:
+            hint = " (token rejected: check the STATS_TOKEN secret)"
+        elif e.code in (403, 429) and left == "0":
+            hint = " (rate limit exhausted)"
+        elif e.code == 403:
+            hint = " (forbidden: token lacks permission)"
+        raise FetchError(f"{what}: HTTP {e.code} {body}{hint}") from None
+    except Exception as e:  # noqa: BLE001
+        raise FetchError(f"{what}: {e}") from None
+
+
 def rest(url):
-    req = urllib.request.Request(url, headers=_headers())
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    return json.loads(_open(urllib.request.Request(url, headers=_headers()), url))
 
 
 def graphql(query, variables):
     body = json.dumps({"query": query, "variables": variables}).encode()
     req = urllib.request.Request("https://api.github.com/graphql", data=body,
                                  headers={**_headers(), "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        out = json.load(r)
+    out = json.loads(_open(req, "GraphQL"))
     if out.get("errors"):
-        raise RuntimeError(out["errors"][0].get("message", "graphql error"))
+        raise FetchError("GraphQL: " + out["errors"][0].get("message", "unknown error"))
     return out["data"]
+
+
+def html(url):
+    return _open(urllib.request.Request(url, headers=_headers("text/html", auth=False)), url)

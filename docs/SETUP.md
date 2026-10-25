@@ -1,43 +1,62 @@
-# Setup
+# Setup, secrets and troubleshooting
+
+`README.md` is **generated** from `config/profile.json` + `config/readme.template.md` by `.github/scripts/make_readme.py`. Edit those, not the README.
 
 ## 1. Publish
 
-1. On GitHub create a **public** repository named exactly `adnan-15` (same as your username). GitHub only shows a profile README from a repo with that name.
-2. Push everything in this folder to its `main` branch (keep `.github/`, `assets/`, `config/`, `docs/`, `README.md`).
-3. Open the **Actions** tab and, if asked, enable workflows.
-4. Repository **Settings > Actions > General > Workflow permissions**: choose **Read and write permissions**. (The workflow also declares `contents: write`, but an organisation or account default can override it.)
-5. Run **Actions > Refresh profile assets > Run workflow** once. It rewrites `assets/generated/*` with your real numbers and commits them. After that it runs daily at 00:30 UTC and whenever you change `config/` or `.github/scripts/`.
+1. Create a **public** repo named exactly `adnan-15`. Push everything in this folder to `main`.
+2. **Settings > Actions > General > Workflow permissions**: *Read and write permissions*.
+3. The first push starts **Refresh profile assets** by itself (it watches `config/`, `.github/scripts/`, the workflow and `assets/icons/`). You can also run it from the **Actions** tab.
+4. Open the finished run: the **summary** lists every data source used and every warning, and the log shows the same as annotations.
 
-Until step 5 finishes, the stats panel, runner and card rings show `n/a`. That is deliberate: nothing is estimated.
+Until that first run succeeds the page shows a compact "pending" stats panel (only facts from the config: 4 projects, 12 technologies, your degree), a compact contribution placeholder, and unlinked project rings. After it, everything is real GitHub data and repo links are filled in.
 
-## 2. Fill in what is missing (`config/profile.json`)
+## 2. What gets verified automatically
 
-| Field | Effect |
+| Item | Source | If it fails |
+| --- | --- | --- |
+| Contribution grid, total, active days, streaks | GraphQL (token) then the public contributions page | grid replaced by a compact placeholder, warning annotation |
+| Commits, last 12 months | GraphQL, else commit search API | tile omitted |
+| Public repos, followers, stars, "since" | REST | tile/row omitted (zero stars/followers are never headlined) |
+| Language bar | languages of your public non-fork repos | panel omitted |
+| **Project repo links + language rings** | each project is matched to a public repo by (1) `repo` in the config, (2) a repo whose *homepage* equals the live URL, (3) a repo name that contains the project keywords | card stays unlinked and a warning lists your repo names; the profile URL is never used as a stand-in |
+
+If **no** data at all can be fetched the job **fails (red)** and leaves existing files untouched. Partial data produces a smaller but complete-looking dashboard plus warnings.
+
+To pin a project to a repo explicitly, set `"repo": "exact-repo-name"` in `config/profile.json`. Private repositories cannot be linked or analysed.
+
+## 3. Secrets and permissions
+
+* **Nothing is required** for public data: the built-in `GITHUB_TOKEN` is used.
+* **Private contributions (optional):** create a classic token with scope `read:user`, add it as repository secret **`STATS_TOKEN`**, and turn on *Profile > Settings > Contributions > Private contributions*. Never put the token in any file.
+* If the run log says `HTTP 401 ... token rejected`, the `STATS_TOKEN` secret is invalid or expired: delete or renew it. `HTTP 403 ... rate limit` means retry later.
+
+## 4. Your photo
+
+The hero uses `https://github.com/adnan-15.png?size=460` as an ordinary `<img>`. It is always your current GitHub avatar, needs no download step, and cannot be broken by SVG security rules. Change your avatar on GitHub and the README follows. GitHub strips CSS from READMEs, so a border or glow around a bare `<img>` is not possible; the terminal card beside it carries the visual frame.
+
+## 5. Customising
+
+| Want to... | Edit |
 | --- | --- |
-| `links.linkedin`, `links.email`, `links.portfolio` | Adds a `Grid.*` row to the hero. Also uncomment the matching button in `README.md`. |
-| `projects[].repo` (repo name only, e.g. `"skymart"`) | The card ring switches from "tech count" to the real language split of that repo. |
-| `projects[].url` / `label` | Live URL shown on the card. Also update the card's `href` in `README.md`. |
+| add LinkedIn / email / portfolio | `links` in `config/profile.json`, then run the workflow (a button and a hero row appear) |
+| mark technologies you are still learning | add their keys (e.g. `"java"`) to `learning`; they get a hollow marker instead of the "used in a project" dot |
+| change projects, tags, blurbs | `projects` in `config/profile.json` |
+| reorder or add sections | `config/readme.template.md` |
 
-Then regenerate locally or just push (the workflow reruns on config changes):
+Local runs (Python 3.8+, standard library only):
 
 ```bash
-python .github/scripts/make_static.py   # hero, tagline, tech stack, buttons
-python .github/scripts/make_stats.py    # needs network; GITHUB_TOKEN optional
-python .github/scripts/make_stats.py --demo   # SYNTHETIC data into ./preview/ for layout checks only
+python .github/scripts/make_static.py
+python .github/scripts/make_stats.py            # needs network; export GITHUB_TOKEN for a higher rate limit
+python .github/scripts/make_readme.py
+python .github/scripts/make_stats.py --demo     # SYNTHETIC data into ./preview/ for layout checks only
 ```
 
-Python 3.8+, standard library only. No `pip install`.
+## 6. Notes
 
-## 3. Optional
-
-* **Private contributions**: create a classic token with `read:user`, store it as repository secret `STATS_TOKEN`. Also enable *Settings (profile) > Contributions > Private contributions*. Without it only public activity is counted.
-* **Cache**: GitHub caches README images. If you change a *static* asset (`hero.svg`, `tech-stack.svg`, ...), rename it (for example `hero-v2.svg`) and update `README.md`; otherwise visitors may keep the old version. Generated panels refresh on their own within minutes to hours.
-* **Scheduled runs pause** on repos with no activity for 60 days. Re-enable the workflow in the Actions tab if that happens.
-
-## How the workflow avoids loops
-
-* It commits only `assets/`, which is not in the `push.paths` filter.
-* It commits with the built-in `GITHUB_TOKEN`, and pushes made with that token never start another workflow run.
-* The commit message carries `[skip ci]`.
-* A `concurrency` group prevents two runs from overlapping.
-* If the GitHub API fails, existing generated files are left untouched.
+* The bot commit touches only `assets/` and `README.md`, uses `GITHUB_TOKEN` and `[skip ci]`, and those paths are not workflow triggers, so it cannot loop.
+* GitHub caches README images. Generated panels refresh within minutes to hours; if you restyle a *static* file, rename it and the reference together.
+* Scheduled workflows pause after 60 days without repository activity; re-enable from the Actions tab.
+* Phones get portrait/compact variants through `<picture media="(max-width: 700px)">`. If GitHub ignores the media query, phones simply receive the desktop variants.
+* Icons: Simple Icons (CC0) and one Font Awesome Free brand icon (CC BY 4.0); see `assets/icons/NOTICE.md`.

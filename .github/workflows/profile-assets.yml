@@ -2,21 +2,21 @@ name: Refresh profile assets
 
 on:
   schedule:
-    # once a day at 00:30 UTC
-    - cron: "30 0 * * *"
+    - cron: "30 0 * * *" # daily at 00:30 UTC
   workflow_dispatch:
   push:
     branches: [main]
-    # Only react to changes that can alter the output. The commit this workflow
-    # makes touches assets/ only, which is NOT listed here, and it is pushed with
-    # GITHUB_TOKEN (which never triggers new runs), so it cannot loop.
+    # Only changes that can alter the output start a run. The bot commit below touches
+    # assets/generated, assets/*.svg and README.md only, none of which are listed here, and it is
+    # pushed with GITHUB_TOKEN (pushes made with it never start another run), so it cannot loop.
     paths:
       - "config/**"
       - ".github/scripts/**"
       - ".github/workflows/profile-assets.yml"
+      - "assets/icons/**"
 
 permissions:
-  contents: write # needed to commit the regenerated SVGs back to the repo
+  contents: write # commit regenerated assets back to the repository
 
 concurrency:
   group: profile-assets
@@ -35,29 +35,32 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build static art (hero, tech stack, buttons)
+      - name: Build static art (terminal card, tech stack, dividers, buttons)
         run: python .github/scripts/make_static.py
 
-      - name: Build live panels (stats, contribution runner, project cards)
+      - name: Build live panels (stats, contribution scene, project cards)
+        # Exits non-zero when GitHub returns no data at all, so a broken run is red, never silently green.
+        # Partial data produces warning annotations and a run summary listing exactly what failed and why.
         run: python .github/scripts/make_stats.py
         env:
-          # Optional: add a classic token with `read:user` as the STATS_TOKEN
-          # secret to include private contributions. Without it the built-in
-          # GITHUB_TOKEN is used and only public activity is counted.
+          # Optional: a classic token with `read:user` stored as the STATS_TOKEN secret adds private
+          # contributions. Without it the built-in GITHUB_TOKEN is used (public activity only).
           GITHUB_TOKEN: ${{ secrets.STATS_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Commit regenerated assets
+      - name: Render README.md from the template and config
+        run: python .github/scripts/make_readme.py
+
+      - name: Commit regenerated files
         env:
           BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          git add assets
+          git add assets README.md
           if git diff --cached --quiet; then
-            echo "Assets unchanged, nothing to commit."
+            echo "Nothing changed, nothing to commit."
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: refresh profile assets [skip ci]"
-          # If main moved while this job ran, rebase onto it and try once more.
           git pull --rebase origin "$BRANCH"
           git push origin "HEAD:$BRANCH"
